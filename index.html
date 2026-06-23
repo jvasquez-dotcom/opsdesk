@@ -5369,7 +5369,7 @@ function respond(o) { return ContentService.createTextOutput(JSON.stringify(o)).
 function rows(name) {
   const s = SS.getSheetByName(name);
   if (!s) return [];
-  const v = s.getDataRange().getValues();
+  const v = s.getDataRange().getDisplayValues(); // getDisplayValues() devuelve siempre string
   if (v.length < 2) return [];
   const h = v[0];
   return v.slice(1).map(r => {
@@ -5386,10 +5386,19 @@ function upsert(name, obj, key) {
   const lastCol = s.getLastColumn();
   const isEmpty = lastRow === 0 || (lastRow === 1 && lastCol <= 1 && s.getRange(1,1).getValue() === '');
   const headers = Object.keys(obj);
+  // Forzar texto en columna 'data' para evitar que Sheets convierta base64 a número
+  function forceText(sheet, rowNum, headers, obj) {
+    const di = headers.indexOf('data');
+    if (di >= 0 && obj['data'] && String(obj['data']).length > 20) {
+      sheet.getRange(rowNum, di + 1).setNumberFormat('@STRING@');
+    }
+  }
   if (isEmpty) {
     s.clearContents();
     s.appendRow(headers);
-    s.appendRow(headers.map(k => obj[k] !== undefined ? obj[k] : ''));
+    const newRow = headers.map(k => obj[k] !== undefined ? obj[k] : '');
+    s.appendRow(newRow);
+    forceText(s, 2, headers, obj);
     return;
   }
   const all = s.getDataRange().getValues();
@@ -5406,10 +5415,12 @@ function upsert(name, obj, key) {
   for (let i = 1; i < all.length; i++) {
     if (String(all[i][ki]) === String(obj[key])) {
       s.getRange(i+1,1,1,h.length).setValues([h.map(k => obj[k] !== undefined ? obj[k] : '')]);
+      forceText(s, i+1, h, obj);
       return;
     }
   }
   s.appendRow(h.map(k => obj[k] !== undefined ? obj[k] : ''));
+  forceText(s, s.getLastRow(), h, obj);
 }
 
 function deleteRow(name, id, key) {
