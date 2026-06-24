@@ -5359,6 +5359,7 @@ function handleAction(d) {
   if (d.action === 'saveFeedback')  { upsert('feedback',      d.data, 'id');            return ok(); }
   if (d.action === 'deleteFeedback'){ deleteRow('feedback',   d.id,  'id');            return ok(); }
   if (d.action === 'pushAll')       { pushAll(d.db);                                    return ok(); }
+  if (d.action === 'pullAll')       { return doGet(null); }
   
   // Save document to Google Drive
   if (d.action === 'saveDoc') {
@@ -6114,12 +6115,19 @@ async function pullFromSheets(){
     // Timeout de 45s: si Sheets no responde, no quedarse colgado en "Sincronizando..."
     const ctrl=new AbortController();
     const tid=setTimeout(()=>ctrl.abort(),45000);
-    let r;
+    let data;
     try{
-      r=await fetch(SHEET_URL+'?t='+Date.now(),{redirect:'follow',signal:ctrl.signal});
+      // POST evita el redirect HTTP/2 de GAS que causa ERR_HTTP2_PROTOCOL_ERROR en Chrome
+      const r=await fetch(SHEET_URL,{
+        method:'POST',
+        redirect:'follow',
+        signal:ctrl.signal,
+        headers:{'Content-Type':'text/plain'},
+        body:JSON.stringify({action:'pullAll'})
+      });
+      if(!r.ok)throw new Error('http '+r.status);
+      data=await r.json();
     }finally{clearTimeout(tid);}
-    if(!r.ok)throw new Error('http '+r.status);
-    const data=await r.json();
     if(!data||data.ok===false)throw new Error('bad response');
 
     // Tickets — Sheets is absolute source of truth
